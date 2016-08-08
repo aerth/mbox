@@ -42,7 +42,7 @@ package mbox
 import (
 	"bytes"
 	"errors"
-	"fmt"
+//	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -79,7 +79,7 @@ func Open(file string) error {
 
 	f, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
-		return errors.New(string(fmt.Printf("Error opening file. ", err, "Hint: touch "+file)))
+		return err
 	}
 	Mail = log.New(f, "", 0)
 	return nil
