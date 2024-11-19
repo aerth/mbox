@@ -42,74 +42,33 @@ package mbox
 import (
 
 	//	"fmt"
-	"net/url"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
+	"io"
 	"time"
 	// email validation
-	"github.com/microcosm-cc/bluemonday" // input sanitizaation
+	// input sanitization
 )
 
 // Form is a single email. No Attachments yet.
 type Form struct {
-	From, Subject, Message string
-	Sent, Received                      time.Time
-	Body []byte
+	From     string    // may be empty "name <email>" format
+	Subject  string    // may be empty
+	Message  string    // the message string
+	Sent     time.Time // optional, when the message was sent
+	Received time.Time // optional, when the message was received (automatically set)
+	Body     []byte    // experimental: possible future use, attachments?
 }
 
-var (
-	// ValidationLevel should be set to something other than 1 to resolve hostnames and validate emails
-	ValidationLevel = 1
-	// Destination is the address where mail is "sent", its useful to change this to the address you will be replying to.
-	Destination = "mbox@localhost"
+var Version = "0.0.2-MIT"
 
-	// Mail is the local mbox, implemented as a logger
-	Mail *os.File
-)
+// ValidationLevel is the level of email validation during Loop() (see Normalize)
+// 0 = none, 1 = normalize, 2 = validate format, 3 = validate format and host
+var ValidationLevel = 1
 
-// ParseQuery returns a mbox.Form from url.Values
-func ParseQuery(query url.Values) *Form {
-	p := bluemonday.StrictPolicy()
-	form := new(Form)
-	additionalFields := ""
-	for k, v := range query {
-		k = strings.ToLower(k)
-		if k == "email" || k == "name" {
-			form.From = v[0]
-			form.From = p.Sanitize(form.From)
-		} else if k == "subject" {
-			form.Subject = v[0]
-			form.Subject = p.Sanitize(form.Subject)
-		} else if k == "message" {
-			form.Message = k + ": " + v[0] + "<br>\n"
-			form.Message = p.Sanitize(form.Message)
-		} else if k != "cosgo" && k != "captchaid" && k != "captchasolution" {
-			additionalFields = additionalFields + k + ": " + v[0] + "<br>\n"
-		}
-	}
-	if form.Subject == "" || form.Subject == " " {
-		form.Subject = "[New Message]"
-	}
-	if additionalFields != "" {
-		if form.Message == "" {
-			form.Message = form.Message + "Message:\n<br>" + p.Sanitize(additionalFields)
-		} else {
-			form.Message = form.Message + "\n<br>Additional:\n<br>" + p.Sanitize(additionalFields)
-		}
-	}
-
-	return form
+// Writable is an interface for writing to a file
+// Default is 'Form' type, but you can implement your own for custom behavior
+type Writable interface {
+	// WriteTo writes the single form to a file/stream, and returns the number of bytes written and an error
+	WriteTo(w io.Writer) (n int64, err error)
 }
 
-// rel2real Relative to Real path name
-func rel2real(file string) (realpath string) {
-	pathdir, _ := path.Split(file)
-	if pathdir == "" {
-		realpath, _ = filepath.Abs(file)
-	} else {
-		realpath = file
-	}
-	return realpath
-}
+var _ Writable = (*Form)(nil)

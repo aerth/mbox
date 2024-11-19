@@ -28,7 +28,7 @@ Usage of mbox library is as follows:
 
 Define mbox.Destination variable in your program
 
-Accept an email, populate the mbox.Form struct like this:
+Accept an email, populate the mbox.mbox.Form struct like this:
 	mbox.From = "joe"
 	mbox.Email = "joe@blowtorches.info
 	mbox.Message = "hello world"
@@ -37,7 +37,7 @@ Accept an email, populate the mbox.Form struct like this:
 
 
 */
-package mbox
+package gpgmbox
 
 import (
 	"bytes"
@@ -50,20 +50,27 @@ import (
 	"golang.org/x/crypto/openpgp/armor" // armorized public key
 
 	//"github.com/goware/emailx"           // email validation
+	"github.com/aerth/mbox"
 	"github.com/microcosm-cc/bluemonday" // input sanitizaation
 )
 
-// ParseFormGPG parses a url submitted query and returns a mbox.Form
-func ParseFormGPG(destination string, query url.Values, publicKey []byte) (form *Form) {
-	Destination = destination
+// ParseFormGPG parses a url submitted query and returns a mbox.mbox.Form
+//
+// Deprecated, use age+mbox instead (see ext_test.go)
+func ParseFormGPG(destination string, query url.Values, publicKey []byte) (form *mbox.Form) {
+	if destination != "" {
+		mbox.Destination = destination
+	}
 	form = ParseQueryGPG(query, publicKey)
 	return form
 }
 
-// ParseQueryGPG returns a mbox.Form from a url.Values but encodes the form.Message if publicKey is not nil
-func ParseQueryGPG(query url.Values, publicKey []byte) *Form {
+// ParseQueryGPG returns a mbox.mbox.Form from a url.Values but encodes the form.Message if publicKey is not nil
+//
+// Deprecated, use age+mbox instead (see ext_test.go)
+func ParseQueryGPG(query url.Values, publicKey []byte) *mbox.Form {
 	p := bluemonday.StrictPolicy()
-	form := new(Form)
+	form := new(mbox.Form)
 	additionalFields := ""
 	for k, v := range query {
 		k = strings.ToLower(k)
@@ -106,6 +113,10 @@ func ParseQueryGPG(query url.Values, publicKey []byte) *Form {
 }
 
 // PGPEncode handles the actual encrypting of the message. Outputs ascii armored gpg message or an error.
+//
+// Encrypt + ASCII armor
+//
+// Deprecated, use age+mbox instead (see ext_test.go)
 func PGPEncode(plain string, publicKey []byte) (encStr string, err error) {
 
 	entitylist, err := openpgp.ReadArmoredKeyRing(bytes.NewBuffer(publicKey))

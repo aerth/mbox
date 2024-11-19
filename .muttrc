@@ -1,0 +1,4 @@
+# example muttrc file to read 'test.mbox' file readonly, sorted by date received
+set spoolfile = test.mbox # change to mbox file path
+set sort = reverse-date-received
+set read_only = yes # change to no if you want to delete stuff

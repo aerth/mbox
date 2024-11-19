@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aerth/mbox"
@@ -12,17 +14,65 @@ import (
 )
 
 func main() {
-	var fetchAll bool
-	if os.Getenv("IMAP_ALL") != "" {
-		fetchAll = true
-	}
-	var c *imap.Client
-	var cmd *imap.Command
-	var rsp *imap.Response
-	var err error
+	var (
+		filename         = "imap.mbox"
+		seq              = "1:5"
+		fetchAll         = os.Getenv("IMAP_ALL") != ""
+		imaphost         = os.Getenv("IMAP_HOST")
+		c                *imap.Client
+		cmd              *imap.Command
+		rsp              *imap.Response
+		err              error
+		user, pass              = os.Getenv("IMAP_USER"), os.Getenv("IMAP_PASS")
+		startnum, endnum string = "1", "5"
+		showversion      bool
+	)
 
+	flag.Usage = func() {
+		exename := filepath.Base(os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", exename)
+		fmt.Fprintf(os.Stderr, "\t  %s -f filename\n", exename)
+		fmt.Fprintf(os.Stderr, "\t  %s -f filename -a\n", exename)
+		fmt.Fprintf(os.Stderr, "\t  %s -f filename -seq 1:5\n", exename)
+		fmt.Fprintf(os.Stderr, "\t  %s -f filename -fetchfrom 1 -fetchto 5\n", exename)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Environment variables:\n")
+		fmt.Fprintf(os.Stderr, "\tIMAP_USER\n")
+		fmt.Fprintf(os.Stderr, "\tIMAP_PASS\n")
+		fmt.Fprintf(os.Stderr, "\tIMAP_HOST\n")
+		fmt.Fprintf(os.Stderr, "\tIMAP_ALL\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Command line flags:\n")
+		flag.PrintDefaults()
+	}
+	flag.StringVar(&filename, "f", filename, "mbox filename")
+	flag.BoolVar(&fetchAll, "a", fetchAll, "fetch all messages (or IMAP_ALL=1, see -seq flag)")
+	flag.StringVar(&seq, "seq", seq, "sequence of messages to fetch, eg: 1:5 or 1,2,3,4,5 or 1:*\nsee also -fetchfrom and -fetchto, comma separated RFC 3501 sequence-set ABNF rule")
+	flag.StringVar(&startnum, "fetchfrom", startnum, "start at including message number")
+	flag.StringVar(&endnum, "fetchto", endnum, "end including message number \ncan use * if your shell allows --fetchto=\\* or -fetchto=*\n")
+	flag.BoolVar(&showversion, "version", false, "show version and exit")
+	flag.Parse()
+	if showversion {
+		fmt.Printf("mbox version %s\n", mbox.Version)
+		fmt.Printf("library/source: https://github.com/aerth/mbox\n")
+		return
+	}
+
+	if len(startnum) == 0 {
+		startnum = "1"
+	}
+	if len(endnum) == 0 {
+		endnum = "5"
+	}
+	if startnum != "1" || endnum != "5" {
+		seq = startnum + ":" + endnum
+	}
+	if user == "" || pass == "" {
+		fmt.Println("Use IMAP_USER, IMAP_PASS, and IMAP_HOST variables")
+		return
+	}
 	// Connect to the server
-	c, err = imap.DialTLS(os.Getenv("IMAP_HOST"), nil)
+	c, err = imap.DialTLS(imaphost, nil)
 
 	if c == nil || err != nil {
 		fmt.Println("Error: can't connect.")
@@ -43,12 +93,6 @@ func main() {
 		c.StartTLS(nil)
 	}
 
-	var user, pass = os.Getenv("IMAP_USER"), os.Getenv("IMAP_PASS")
-
-	if user == "" || pass == "" {
-		fmt.Println("Use IMAP_USER, IMAP_PASS, and IMAP_HOST ( optional IMAP_POST ) variables")
-		return
-	}
 	// Authenticate
 	if c.State() == imap.Login {
 		c.Login(user, pass)
@@ -71,7 +115,7 @@ func main() {
 	if fetchAll {
 		set, _ = imap.NewSeqSet("1:*")
 	} else {
-		set, _ = imap.NewSeqSet("1:5")
+		set, _ = imap.NewSeqSet(seq)
 	}
 	// if c.Mailbox.Messages >= 10 {
 	// 	set.AddRange(c.Mailbox.Messages-9, c.Mailbox.Messages)
@@ -91,24 +135,20 @@ func main() {
 	}
 
 	var i int = 1
+	if err := mbox.Open(nil, filename); err != nil {
+		fmt.Println(err)
+		return
+	}
 	for cmd.InProgress() {
 		c.Recv(-1)
-		mbox.Open("imap.mbox")
 		for _, rsp = range cmd.Data {
 			header := imap.AsBytes(rsp.MessageInfo().Attrs["RFC822.HEADER"])
 			if msg, _ := mail.ReadMessage(bytes.NewReader(header)); msg != nil {
 				body := imap.AsBytes(rsp.MessageInfo().Attrs["RFC822.TEXT"])
-
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-
 				if len(body) > 0 {
 					var form mbox.Form
 					form.From = msg.Header.Get("Return-path")
 					form.Subject = msg.Header.Get("Subject")
-					if form.Subject == "" { form.Subject = "<no subject>" }
 					form.Message = string(body)
 					mbox.Save(&form)
 					fmt.Printf("Message #%v saved to mbox\n", i)
@@ -117,13 +157,8 @@ func main() {
 			}
 		}
 		cmd.Data = nil
-
-		// Process unilateral server data
-		for _, rsp = range c.Data {
-			//fmt.Println("Server data:", rsp)
-		}
-		c.Data = nil
 	}
+	mbox.Close()
 
 	// Check command completion status
 	if rsp, err := cmd.Result(imap.OK); err != nil {
